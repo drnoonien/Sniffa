@@ -1,0 +1,7 @@
+## Interface: 110007
+## Title: Sniffa
+## Notes: Tracks assignments and reports missed casts
+## SavedVariables: SniffaDB
+
+embeds.xml
+Sniffa.lua
