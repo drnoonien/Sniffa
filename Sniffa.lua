@@ -2,6 +2,12 @@ local addonName, ns = ...
 
 -- =======================================================================================
 
+local function VDTLog(payload, label)
+	if (VDT) then
+		VDT:Add(payload, label)
+	end
+end
+
 local function PruneHistoryByDate(targetDate)
 	if not targetDate:match("^%d%d%d%d%-%d%d%-%d%d$") then
 		print(addonName, "Error: date must be in yyyy-mm-dd format")
@@ -631,14 +637,13 @@ function EventFrame:ENCOUNTER_END(_, ...)
 
 	local result = CompareStuff2()
 
-	VDT:Add({ START_TIME, END_TIME }, "start-end")
-	VDT:Add({ PLAYER_EVENTS }, "player-events")
-	VDT:Add({ ENEMY_EVENTS }, "enemy-events")
-	VDT:Add({ NOTE_METADATA }, "note-meta")
-	VDT:Add({ NOTE_DATA }, "note-data")
-	VDT:Add({ DEATH_EVENTS }, "death-events")
-
-	VDT:Add({ result }, "compare-result")
+	VDTLog({ START_TIME, END_TIME }, "start-end")
+	VDTLog({ PLAYER_EVENTS }, "player-events")
+	VDTLog({ ENEMY_EVENTS }, "enemy-events")
+	VDTLog({ NOTE_METADATA }, "note-meta")
+	VDTLog({ NOTE_DATA }, "note-data")
+	VDTLog({ DEATH_EVENTS }, "death-events")
+	VDTLog({ result }, "compare-result")
 
 	local deathData = {}
 
@@ -662,7 +667,7 @@ function EventFrame:ENCOUNTER_END(_, ...)
 		deathData = deathData
 	}
 
-	VDT:Add({ SniffaDB }, "SniffaDB")
+	VDTLog({ SniffaDB }, "SniffaDB")
 
 	ShowGUI()
 end
@@ -773,15 +778,15 @@ SlashCmdList.SNIFFA = function(msg, editBox)
 		print(addonName, "Available commands:")
 		print("/sniff - Opens the Sniffa GUI.")
 		print("/sniff help - Displays this help information.")
-		print("/sniff note - Parses the current note and logs the data.")
 		print("/sniff prune <number> - Prunes the oldest <number> of entries from the history.")
 		print("/sniff prune-date <yyyy-mm-dd> - Prunes entries from the history for the specifie date.")
+		print("/sniff note (debug only) - Parses the current note and logs the data to ViragDevTool")
 	end
 
 	if (args[1] == "note") then
 		ParseNote()
-		VDT:Add({ NOTE_DATA }, "note-data")
-		VDT:Add({ NOTE_METADATA }, "note-metadata")
+		VDTLog({ NOTE_DATA }, "note-data")
+		VDTLog({ NOTE_METADATA }, "note-metadata")
 		print(addonName, "Dumped note to VDT")
 	end
 
