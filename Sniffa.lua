@@ -779,7 +779,7 @@ SlashCmdList.SNIFFA = function(msg, editBox)
 		print("/sniff - Opens the Sniffa GUI.")
 		print("/sniff help - Displays this help information.")
 		print("/sniff prune <number> - Prunes the oldest <number> of entries from the history.")
-		print("/sniff prune-date <yyyy-mm-dd> - Prunes entries from the history for the specifie date.")
+		print("/sniff prune-date <yyyy-mm-dd> - Prunes entries from the history for the specified date.")
 		print("/sniff note (debug only) - Parses the current note and logs the data to ViragDevTool")
 	end
 
@@ -797,7 +797,7 @@ SlashCmdList.SNIFFA = function(msg, editBox)
 		end
 
 		PruneHistory(args[2])
-		print(addonName, "Pruned %s entries", args[2])
+		print(addonName, string.format("Pruned %s entries", args[2]))
 	end
 
 	if (args[1] == "prune-date") then
