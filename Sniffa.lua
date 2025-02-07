@@ -167,11 +167,15 @@ local function ShowGUI()
 
 		local labels = {}
 
-		-- TODO: Remove default
-		for _, entry in ipairs(value.deathData or {}) do
+		for _, entry in ipairs(value.deathData) do
 			local label = AceGUI:Create("Label")
 			label:SetFullWidth(true)
 			local text = ColorString(string.format("%s - [ Death: %s ]", entry.time, entry.player), "blue")
+
+			if (entry.player == UnitName("player")) then
+				text = "|A:characterupdate_arrow-bullet-point:12:12:0:-1.5|a " .. text
+			end
+
 			label:SetText(text)
 			label:SetFontObject(GameFontNormal)
 
@@ -211,6 +215,10 @@ local function ShowGUI()
 				text = string.format("%s - %s - %s", v.time, spellName, v.player)
 			end
 
+			if (v.player == UnitName("player")) then
+				text = "|A:characterupdate_arrow-bullet-point:12:12:0:-1.5|a " .. text
+			end
+
 			if (not v.hit) then
 				text = ColorString(text, "red")
 			elseif (v.drift > 5) then
@@ -234,7 +242,6 @@ local function ShowGUI()
 			local bottom = 1 - (zoomFactor / 2)
 			texture:SetTexCoord(left, right, top, bottom)
 
-			-- frame:AddChild(label)
 			tinsert(labels, label)
 		end
 
@@ -472,7 +479,7 @@ local END_TIME = -1
 ---@field time string
 ---@field drift? number
 
-local function CompareStuff2()
+local function GenerateEncounterResult()
 	---@type ResultRow[]
 	local result = {}
 
@@ -571,12 +578,74 @@ function EventFrame:ADDON_LOADED(_, addon)
 	---@class EncounterData
 	---@field meta EncounterMeta
 	---@field data ResultRow[]
-	---@field deathData {player: string, time: string}[]
+	---@field deathData { player: string, time: string }[]
 
-	---@type table<string, EncounterData>
-	SniffaDB = SniffaDB or {
-		history = {}
+	---@class SniffaOptions
+	---@field autoShowAfterEncounter string
+
+	---@class SniffaDBType
+	---@field history table<string, EncounterData>
+	---@field options SniffaOptions
+
+	---@type SniffaDBType
+	SniffaDB = SniffaDB or { history = {} }
+
+	if not SniffaDB.options then
+		SniffaDB.options = {
+			autoShowAfterEncounter = "if_my_missed_assignments",
+		}
+	end
+
+	local options = {
+		name = "Sniffa",
+		type = "group",
+		args = {
+
+			clearAllData = {
+				type = "execute",
+				name = "Clear all data",
+				order = 1,
+				func = function()
+					SniffaDB.history = {}
+					print(addonName, "Removed all stored data!")
+				end,
+			},
+			emptyRow1 = {
+				width = "full",
+				type = "description",
+				name = " ",
+				order = 2,
+			},
+			emptyRow2 = {
+				width = "full",
+				type = "description",
+				name = " ",
+				order = 3,
+			},
+			autoShowAfterEncounter = {
+				width = 1.2,
+				type = "select",
+				name = "Automatically show after encounter",
+				order = 4,
+				values = {
+					always = "Always",
+					if_any_missed_assignments = "If there are any missed assignments",
+					if_my_missed_assignments = "If I have missed assignments",
+					never = "Never",
+				},
+				set = function(_, val)
+					SniffaDB.options.autoShowAfterEncounter = val
+				end,
+				get = function(_)
+					return SniffaDB.options.autoShowAfterEncounter
+				end,
+			},
+
+		}
 	}
+
+	LibStub("AceConfig-3.0"):RegisterOptionsTable(addonName, options)
+	ns.optionsFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions(addonName, "Sniffa")
 end
 
 function EventFrame:ENCOUNTER_START(event, ...)
@@ -594,7 +663,6 @@ function EventFrame:ENCOUNTER_START(event, ...)
 	local encounterID, encounterName, difficultyID, groupSize = ...
 
 	if (not enabledEncounters[encounterID]) then
-		print(addonName, "-", "Current encounter is not tracked, will ignore", encounterID, encounterName)
 		return
 	end
 
@@ -611,8 +679,14 @@ function EventFrame:ENCOUNTER_START(event, ...)
 	DEATH_EVENTS = {}
 	ENEMY_EVENTS = {}
 	NOTE_DATA = {}
+	NOTE_METADATA = {}
 
 	ParseNote()
+
+	if (#NOTE_DATA <= 0) then
+		return
+	end
+
 	START_TIME = GetTime()
 	START_DATETIME = GetCurrentFormattedDateTime()
 	CAPTURE_EVENTS = true
@@ -635,7 +709,7 @@ function EventFrame:ENCOUNTER_END(_, ...)
 		return
 	end
 
-	local result = CompareStuff2()
+	local result = GenerateEncounterResult()
 
 	VDTLog({ START_TIME, END_TIME }, "start-end")
 	VDTLog({ PLAYER_EVENTS }, "player-events")
@@ -669,7 +743,28 @@ function EventFrame:ENCOUNTER_END(_, ...)
 
 	VDTLog({ SniffaDB }, "SniffaDB")
 
-	ShowGUI()
+	if (SniffaDB.options.autoShowAfterEncounter == "always") then
+		ShowGUI()
+		return
+	end
+
+	if (SniffaDB.options.autoShowAfterEncounter == "if_any_missed_assignments") then
+		for _, k in pairs(result) do
+			if (not k.hit) then
+				ShowGUI()
+				return
+			end
+		end
+	end
+
+	if (SniffaDB.options.autoShowAfterEncounter == "if_my_missed_assignments") then
+		for _, k in pairs(result) do
+			if (k.player == UnitName("player") and not k.hit) then
+				ShowGUI()
+				return
+			end
+		end
+	end
 end
 
 function EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
@@ -778,16 +873,25 @@ SlashCmdList.SNIFFA = function(msg, editBox)
 		print(addonName, "Available commands:")
 		print("/sniff - Opens the Sniffa GUI.")
 		print("/sniff help - Displays this help information.")
+		print("/sniff config - Opens config.")
 		print("/sniff prune <number> - Prunes the oldest <number> of entries from the history.")
 		print("/sniff prune-date <yyyy-mm-dd> - Prunes entries from the history for the specified date.")
 		print("/sniff note (debug only) - Parses the current note and logs the data to ViragDevTool")
 	end
 
 	if (args[1] == "note") then
+		NOTE_DATA = {}
+		NOTE_METADATA = {}
+
 		ParseNote()
 		VDTLog({ NOTE_DATA }, "note-data")
 		VDTLog({ NOTE_METADATA }, "note-metadata")
+
 		print(addonName, "Dumped note to VDT")
+	end
+
+	if (args[1] == "config") then
+		Settings.OpenToCategory(ns.optionsFrame.name)
 	end
 
 	if (args[1] == "prune") then
