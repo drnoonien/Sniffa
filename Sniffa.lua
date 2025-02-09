@@ -111,7 +111,9 @@ local function ShowGUI()
 	window:SetHeight(500)
 	window:EnableResize(false)
 	window:SetLayout("Fill")
-	window:SetStatusText("v1.0.0")
+
+	local version = C_AddOns.GetAddOnMetadata(addonName, "Version")
+	window:SetStatusText(string.format("v%s", version))
 
 	_G["SniffaGlobalWindowHandle"] = window.frame
 	table.insert(UISpecialFrames, "SniffaGlobalWindowHandle")
