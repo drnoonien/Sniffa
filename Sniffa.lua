@@ -170,7 +170,9 @@ local function ShowGUI()
 		for _, entry in ipairs(value.deathData) do
 			local label = AceGUI:Create("Label")
 			label:SetFullWidth(true)
-			local text = ColorString(string.format("%s - [ Death: %s ]", entry.time, entry.player), "blue")
+
+			local text = string.format("%s - [ %s: %s ]", entry.ress and "Ress" or "Death", entry.time, entry.player)
+			text = ColorString(text, "blue")
 
 			if (entry.player == UnitName("player")) then
 				text = "|A:characterupdate_arrow-bullet-point:12:12:0:-1.5|a " .. text
@@ -181,7 +183,10 @@ local function ShowGUI()
 
 			label:SetUserData("sortTime", entry.time)
 
-			label:SetImage(133730)
+			local ressIcon  = 135955
+			local skullIcon = 133730
+
+			label:SetImage(entry.ress and ressIcon or skullIcon)
 			label:SetImageSize(16, 16)
 
 			-- Zoom the icon in a bit to hide borders
@@ -605,10 +610,11 @@ function EventFrame:ADDON_LOADED(_, addon)
 	---@class EncounterData
 	---@field meta EncounterMeta
 	---@field data ResultRow[]
-	---@field deathData { player: string, time: string }[]
+	---@field deathData { player: string, time: string, ress?: boolean }[]
 
 	---@class SniffaOptions
 	---@field autoShowAfterEncounter string
+	---@field deathCutoff number
 
 	---@class SniffaDBType
 	---@field history table<string, EncounterData>
@@ -617,10 +623,16 @@ function EventFrame:ADDON_LOADED(_, addon)
 	---@type SniffaDBType
 	SniffaDB = SniffaDB or { history = {} }
 
-	if not SniffaDB.options then
-		SniffaDB.options = {
-			autoShowAfterEncounter = "if_my_missed_assignments",
-		}
+	local defaultOptions = {
+		autoShowAfterEncounter = "if_my_missed_assignments"
+	}
+
+	SniffaDB.options = SniffaDB.options or {}
+
+	for key, defaultValue in pairs(defaultOptions) do
+		if (SniffaDB.options[key] == nil) then
+			SniffaDB.options[key] = defaultValue
+		end
 	end
 
 	local options = {
@@ -666,7 +678,7 @@ function EventFrame:ADDON_LOADED(_, addon)
 				get = function(_)
 					return SniffaDB.options.autoShowAfterEncounter
 				end,
-			},
+			}
 
 		}
 	}
@@ -680,7 +692,7 @@ function EventFrame:ENCOUNTER_START(event, ...)
 
 	local enabledEncounters = {
 		[2086] = "Rezan", -- Debug
-		
+
 		[2902] = "Ulgrax",
 		[2917] = "Horror",
 		[2898] = "Sikran",
@@ -742,7 +754,7 @@ function EventFrame:ENCOUNTER_END(_, ...)
 				print(addonName, "—",
 					ColorString(
 						string.format(
-							"Captured a spell whose name but not ID matches a note assignment, you likely need to add a mapping, name: %s, captured ID: %s",
+							"Captured a spell whose name but not ID matches a note assignment, contact the developer and ask them to map the spell, name: %s, captured ID: %s",
 							capturedSpellName, capturedSpellId), "red"))
 			end
 		end
@@ -828,10 +840,19 @@ function EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
 		destName = destName:match("^[^-]+")
 	end
 
-	-- Stop tracking deaths after 7 deaths, pull is _likely_ over
-	local keepTrackingDeaths = #DEATH_EVENTS < 7
+	if (not hostileSourceUnit and subEvent == "SPELL_RESURRECT") then
+		if (ENCOUNTER_PLAYERS[destName]) then
+			tinsert(DEATH_EVENTS, {
+				player = destName,
+				time = GetTime(),
+				ress = true
+			})
+		end
 
-	if (not hostileSourceUnit and subEvent == "UNIT_DIED" and keepTrackingDeaths) then
+		return
+	end
+
+	if (not hostileSourceUnit and subEvent == "UNIT_DIED") then
 		if (ENCOUNTER_PLAYERS[destName]) then
 			tinsert(DEATH_EVENTS, {
 				player = destName,
@@ -852,7 +873,7 @@ function EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
 	local spell = eventArgs[12]
 
 	-- Spirit of Redemption
-	if (not hostileSourceUnit and subEvent == "SPELL_AURA_APPLIED" and spell == 27827 and keepTrackingDeaths) then
+	if (not hostileSourceUnit and subEvent == "SPELL_AURA_APPLIED" and spell == 27827) then
 		if (ENCOUNTER_PLAYERS[sourceName]) then
 			tinsert(DEATH_EVENTS, {
 				player = sourceName,
