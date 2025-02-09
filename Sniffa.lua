@@ -3,7 +3,7 @@ local addonName, ns = ...
 -- =======================================================================================
 
 local function VDTLog(payload, label)
-	if (VDT) then
+	if (VDT and type(VDT) == "table") then
 		VDT:Add(payload, label)
 	end
 end
