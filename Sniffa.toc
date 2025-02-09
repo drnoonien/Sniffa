@@ -2,7 +2,7 @@
 ## Title: Sniffa
 ## Notes: Tracks assignments and reports missed casts
 ## SavedVariables: SniffaDB
-## Version: 1.2.0
+## Version: 1.2.1
 
 embeds.xml
 Sniffa.lua
