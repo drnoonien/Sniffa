@@ -373,8 +373,37 @@ local ENCOUNTER_PLAYERS = {}
 
 local NOTE_METADATA = {
 	players = {},
-	spells = {}
+	spells = {},
+	spellNames = {}
 }
+
+local ALL_PLAYER_SPELLS = {}
+
+local CAPTURE_EVENTS = false
+local START_DATETIME = nil
+local START_TIME = -1
+local END_TIME = -1
+
+local function ClearGlobalData()
+	DEATH_EVENTS = {}
+	PLAYER_EVENTS = {}
+	ENEMY_EVENTS = {}
+	NOTE_DATA = {}
+	ENCOUNTER_PLAYERS = {}
+
+	NOTE_METADATA = {
+		players = {},
+		spells = {},
+		spellNames = {}
+	}
+
+	ALL_PLAYER_SPELLS = {}
+
+	CAPTURE_EVENTS = false
+	START_DATETIME = nil
+	START_TIME = -1
+	END_TIME = -1
+end
 
 -- Run on ENCOUNTER_START
 local function ParseNote()
@@ -427,8 +456,11 @@ local function ParseNote()
 						if (spell) then
 							local playerSpell = mapIncorrectPlayerSpellsInNote(tonumber(spell))
 
+							local spellInfo = C_Spell.GetSpellInfo(playerSpell)
+
 							NOTE_METADATA.players[playerName] = true
 							NOTE_METADATA.spells[playerSpell] = true
+							NOTE_METADATA.spellNames[spellInfo.name] = true
 
 							local playerEntry = {
 								player = playerName,
@@ -466,11 +498,6 @@ EventFrame:RegisterEvent("ADDON_LOADED")
 EventFrame:SetScript("OnEvent", function(self, event, ...)
 	self[event](self, event, ...)
 end)
-
-local CAPTURE_EVENTS = false
-local START_DATETIME = nil
-local START_TIME = -1
-local END_TIME = -1
 
 ---@class ResultRow
 ---@field hit boolean
@@ -649,7 +676,11 @@ function EventFrame:ADDON_LOADED(_, addon)
 end
 
 function EventFrame:ENCOUNTER_START(event, ...)
+	ClearGlobalData()
+
 	local enabledEncounters = {
+		[2086] = "Rezan", -- Debug
+		
 		[2902] = "Ulgrax",
 		[2917] = "Horror",
 		[2898] = "Sikran",
@@ -674,12 +705,6 @@ function EventFrame:ENCOUNTER_START(event, ...)
 			ENCOUNTER_PLAYERS[realmLessName] = true
 		end
 	end
-
-	PLAYER_EVENTS = {}
-	DEATH_EVENTS = {}
-	ENEMY_EVENTS = {}
-	NOTE_DATA = {}
-	NOTE_METADATA = {}
 
 	ParseNote()
 
@@ -710,6 +735,18 @@ function EventFrame:ENCOUNTER_END(_, ...)
 	end
 
 	local result = GenerateEncounterResult()
+
+	for noteSpellName, _ in pairs(NOTE_METADATA.spellNames) do
+		for capturedSpellId, capturedSpellName in pairs(ALL_PLAYER_SPELLS) do
+			if (noteSpellName == capturedSpellName and not NOTE_METADATA.spells[capturedSpellId]) then
+				print(addonName, "—",
+					ColorString(
+						string.format(
+							"Captured a spell whose name but not ID matches a note assignment, you likely need to add a mapping, name: %s, captured ID: %s",
+							capturedSpellName, capturedSpellId), "red"))
+			end
+		end
+	end
 
 	VDTLog({ START_TIME, END_TIME }, "start-end")
 	VDTLog({ PLAYER_EVENTS }, "player-events")
@@ -827,6 +864,11 @@ function EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
 	end
 
 	if (not NOTE_METADATA.spells[spell]) then
+		if (not hostileSourceUnit and not ALL_PLAYER_SPELLS[spell]) then
+			local spellInfo = C_Spell.GetSpellInfo(spell)
+			ALL_PLAYER_SPELLS[spell] = spellInfo.name
+		end
+
 		return
 	end
 
@@ -862,7 +904,7 @@ end
 
 SLASH_SNIFFA1 = "/sniff"
 SLASH_SNIFFA2 = "/sniffa"
-SlashCmdList.SNIFFA = function(msg, editBox)
+SlashCmdList.SNIFFA = function(msg)
 	local args = customSplit(msg, " ")
 
 	if (#args <= 0) then
@@ -880,8 +922,7 @@ SlashCmdList.SNIFFA = function(msg, editBox)
 	end
 
 	if (args[1] == "note") then
-		NOTE_DATA = {}
-		NOTE_METADATA = {}
+		ClearGlobalData()
 
 		ParseNote()
 		VDTLog({ NOTE_DATA }, "note-data")
