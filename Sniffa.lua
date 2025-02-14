@@ -173,8 +173,13 @@ local function ShowGUI()
 			local label = AceGUI:Create("Label")
 			label:SetFullWidth(true)
 
-			local text = string.format("%s - [ %s: %s ]", entry.ress and "Ress" or "Death", entry.time, entry.player)
-			text = ColorString(text, "blue")
+			local text = string.format("%s - [%s] %s", entry.time, entry.ress and "Ress" or "Death", entry.player)
+
+			if (entry.ress) then
+				text = ColorString(text, "green")
+			else
+				text = ColorString(text, "blue")
+			end
 
 			if (entry.player == UnitName("player")) then
 				text = "|A:characterupdate_arrow-bullet-point:12:12:0:-1.5|a " .. text
@@ -353,7 +358,7 @@ local function mapIncorrectPlayerSpellsInNote(spell)
 	return spell
 end
 
----@type { player: string, time: number }[]
+---@type { player: string, time: number, ress?: boolean }[]
 local DEATH_EVENTS = {}
 
 ---@type table<string, number[]>
@@ -775,7 +780,8 @@ function EventFrame:ENCOUNTER_END(_, ...)
 	for _, value in ipairs(DEATH_EVENTS) do
 		tinsert(deathData, {
 			player = value.player,
-			time = formatTimestamp(value.time - START_TIME)
+			time = formatTimestamp(value.time - START_TIME),
+			ress = value.ress
 		})
 	end
 
