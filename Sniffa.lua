@@ -635,6 +635,28 @@ function ns.util.VDTLog(payload, label)
     end
 end
 
+function ns.util.DeepCopy(object)
+    local lookup_table = {}
+    local function _copy(obj)
+        if type(obj) ~= "table" then
+            return obj
+        elseif lookup_table[obj] then
+            return lookup_table[obj]
+        end
+
+        local new_table = {}
+        lookup_table[obj] = new_table
+
+        for key, value in pairs(obj) do
+            new_table[_copy(key)] = _copy(value)
+        end
+
+        return setmetatable(new_table, getmetatable(obj))
+    end
+
+    return _copy(object)
+end
+
 function ns.util.TrimRealmName(name)
     return name:match("^[^-]+")
 end
@@ -1055,8 +1077,8 @@ function ns.parser.MapIncorrectPlayerSpellsFromNote(spell)
 end
 
 function ns.parser.ResetState()
-    ns.parser.note = parserNoteDefaults
-    ns.parser.capture = parserCaptureDefaults
+    ns.parser.note = ns.util.DeepCopy(parserNoteDefaults)
+    ns.parser.capture = ns.util.DeepCopy(parserCaptureDefaults)
 end
 
 function ns.parser.ParseNote()
