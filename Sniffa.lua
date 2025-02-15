@@ -330,13 +330,16 @@ function ns.EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
     --------------------------------------------------------------------------------------
 
     if (not hostileDestUnit and subEvent == "UNIT_DIED") then
-        ns.util.VDTLog({ hostileDestUnit, subEvent, destName }, "UNIT_DIED")
+        ns.util.VDTLog({ hostileDestUnit, subEvent, destName, destGUID }, "UNIT_DIED")
 
         if (ns.parser.capture.deadPlayers[destName]
-                ---@diagnostic disable-next-line: param-type-mismatch
-                or UnitIsFeignDeath(UnitTokenFromGUID(destGUID))
                 or not ns.parser.capture.playersInEncounter[destName]
                 or not ns.parser.note.meta.players[destName]) then
+            return
+        end
+
+        ---@diagnostic disable-next-line: param-type-mismatch
+        if (destGUID and UnitIsFeignDeath(UnitTokenFromGUID(destGUID))) then
             return
         end
 
