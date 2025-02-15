@@ -62,37 +62,13 @@ local addonName, ns = ...
 ---@field MapIncorrectPlayerSpellsFromNote? function
 ---@field ProcessEncounterResult? function
 
-------------------------------------------------------------------------------------------
-
--- EasyMenu is apparently removed from the game, stole this shim from
--- the wow-dev discord.
-
-local function EasyMenu_Initialize(frame, level, menuList)
-    for index = 1, #menuList do
-        local value = menuList[index]
-        if (value.text) then
-            value.index = index;
-            UIDropDownMenu_AddButton(value, level);
-        end
-    end
-end
-
-local function EasyMenu(menuList, menuFrame, anchor, x, y, displayMode, autoHideDelay)
-    if (displayMode == "MENU") then
-        menuFrame.displayMode = displayMode;
-    end
-    UIDropDownMenu_Initialize(menuFrame, EasyMenu_Initialize, displayMode, nil, menuList);
-    ToggleDropDownMenu(1, nil, menuFrame, anchor, x, y, menuList, nil, autoHideDelay);
-end
-
-------------------------------------------------------------------------------------------
-
 local LDB = LibStub("LibDataBroker-1.1")
 local LDBIcon = LibStub("LibDBIcon-1.0")
 local AceGUI = LibStub("AceGUI-3.0")
 
 ns.util = {}
 ns.gui = {}
+ns.dropdown = {}
 
 ---@type Note
 local parserNoteDefaults = {
@@ -631,6 +607,51 @@ function ns.RegisterMinimapButton()
     LDBIcon:Register(addonName, dataObj, SniffaLDBIconDB)
 end
 
+---@param options { type: "header"|"link"|"sep", text?: string, func?: function }[]
+function ns.dropdown.CreateDropdown(options)
+    local dropdownFrame = CreateFrame("Frame")
+    dropdownFrame.displayMode = 'MENU'
+    dropdownFrame.initialize = function()
+        local function addHeader(text)
+            local ddInfo = UIDropDownMenu_CreateInfo()
+            ddInfo.text = text
+            ddInfo.isTitle = true
+            ddInfo.notCheckable = true
+            ddInfo.hasArrow = false
+            UIDropDownMenu_AddButton(ddInfo, 1)
+        end
+        local function addLink(text, func)
+            local ddInfo = UIDropDownMenu_CreateInfo()
+            ddInfo.text = text
+            ddInfo.isTitle = false
+            ddInfo.notCheckable = true
+            ddInfo.hasArrow = false
+            ddInfo.func = func
+            UIDropDownMenu_AddButton(ddInfo, 1)
+        end
+        local function addSeparator()
+            local ddInfo = UIDropDownMenu_CreateInfo()
+            ddInfo.text = " "
+            ddInfo.isTitle = false
+            ddInfo.notCheckable = true
+            ddInfo.hasArrow = false
+            UIDropDownMenu_AddButton(ddInfo, 1)
+        end
+
+        for _, opt in ipairs(options) do
+            if (opt.type == "header") then
+                addHeader(opt.text)
+            elseif (opt.type == "link") then
+                addLink(opt.text, opt.func)
+            else
+                addSeparator()
+            end
+        end
+    end
+
+    return dropdownFrame
+end
+
 function ns.util.VDTLog(payload, label)
     if (not SniffaDB.options.enableDebugLogging) then
         return
@@ -868,8 +889,13 @@ function ns.gui.ShowMainGUI()
             ns.gui.SetDetails(innerRight, entryValue)
 
             if btn == "RightButton" then
-                local menu = {
+                local dropdown = ns.dropdown.CreateDropdown({
                     {
+                        type = "header",
+                        text = "Delete"
+                    },
+                    {
+                        type = "link",
                         text = "Delete row",
                         func = function()
                             SniffaDB.history[entry.key] = nil
@@ -878,10 +904,11 @@ function ns.gui.ShowMainGUI()
                             -- shit in Ace
                             ns.gui.MainGUI:Hide()
                             ns.gui.ShowMainGUI()
-                        end,
+                        end
                     },
                     {
-                        text = "Delete all rows on this date",
+                        type = "link",
+                        text = "Delete all rows for date",
                         func = function()
                             for key in pairs(SniffaDB.history) do
                                 local targetDate = entry.key:match("^(%d%d%d%d%-%d%d%-%d%d)")
@@ -896,13 +923,12 @@ function ns.gui.ShowMainGUI()
                             -- shit in Ace
                             ns.gui.MainGUI:Hide()
                             ns.gui.ShowMainGUI()
-                        end,
-                    }
-                }
+                        end
+                    },
 
-                -- Show the menu at the cursor location.
-                local contextMenuFrame = CreateFrame("Frame", "ContextMenuFrame", UIParent, "UIDropDownMenuTemplate")
-                EasyMenu(menu, contextMenuFrame, "cursor", 0, 0, "MENU")
+                })
+
+                ToggleDropDownMenu(1, nil, dropdown, 'cursor', 0, 0)
             end
         end)
 
