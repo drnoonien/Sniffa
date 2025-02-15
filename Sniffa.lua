@@ -314,6 +314,7 @@ function ns.EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
     local sourceName = eventArgs[5]
     local sourceUnitFlags = eventArgs[6]
     local destUnitFlags = eventArgs[10]
+    local destGUID = eventArgs[8]
     local destName = eventArgs[9]
 
     local hostileSourceUnit = bit.band(sourceUnitFlags, COMBATLOG_OBJECT_REACTION_HOSTILE) > 0
@@ -332,6 +333,8 @@ function ns.EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
         ns.util.VDTLog({ hostileDestUnit, subEvent, destName }, "UNIT_DIED")
 
         if (ns.parser.capture.deadPlayers[destName]
+                ---@diagnostic disable-next-line: param-type-mismatch
+                or UnitIsFeignDeath(UnitTokenFromGUID(destGUID))
                 or not ns.parser.capture.playersInEncounter[destName]
                 or not ns.parser.note.meta.players[destName]) then
             return
