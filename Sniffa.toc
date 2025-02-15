@@ -1,8 +1,9 @@
 ## Interface: 110007
 ## Title: Sniffa
 ## Notes: Tracks assignments and reports missed casts
-## SavedVariables: SniffaDB
+## SavedVariables: SniffaDB, SniffaLDBIconDB
 ## Version: 1.2.1
+## IconTexture: Interface\Addons\Sniffa\Assets\sniffa_icon.tga
 
 embeds.xml
 Sniffa.lua
