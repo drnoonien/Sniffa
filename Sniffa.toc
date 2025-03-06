@@ -2,7 +2,7 @@
 ## Title: Sniffa
 ## Notes: Tracks assignments and reports missed casts
 ## SavedVariables: SniffaDB, SniffaLDBIconDB
-## Version: 1.3.4
+## Version: 1.4.0
 ## IconTexture: Interface\Addons\Sniffa\Assets\sniffa_icon.tga
 
 embeds.xml
