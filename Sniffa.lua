@@ -29,12 +29,13 @@ local addonName, ns = ...
 ---@alias Time number
 ---@alias EventAndSpellKey string
 ---@alias PlayerNameAndSpellKey string
+---@alias PhaseNumber number
 
 ---@class Capture
 ---@field captureEvents boolean
 ---@field playersInEncounter table<PlayerName, boolean>
 ---@field playerUnitIdCache table<UnitId, PlayerName>
----@field deadPlayers table<PlayerName, boolean>
+---@field deadPlayers table<PlayerName, {dead: boolean, angel?: true}>
 ---@field deathEvents DeathData[]
 ---@field startTime? number
 ---@field endTime? number
@@ -43,6 +44,7 @@ local addonName, ns = ...
 ---@field trackedPlayerSpells table<SpellName, SpellId>
 ---@field playerEvents table<PlayerNameAndSpellKey, Time[]>
 ---@field enemyEvents table<EventAndSpellKey, Time[]>
+---@field phaseChanges table<PhaseNumber, Time[]>
 
 ---@class NoteMeta
 ---@field players table<PlayerName, boolean>
@@ -69,6 +71,30 @@ local AceGUI = LibStub("AceGUI-3.0")
 ns.util = {}
 ns.gui = {}
 ns.dropdown = {}
+ns.bw = {}
+
+-- We need this early
+function ns.util.DeepCopy(object)
+    local lookup_table = {}
+    local function _copy(obj)
+        if type(obj) ~= "table" then
+            return obj
+        elseif lookup_table[obj] then
+            return lookup_table[obj]
+        end
+
+        local new_table = {}
+        lookup_table[obj] = new_table
+
+        for key, value in pairs(obj) do
+            new_table[_copy(key)] = _copy(value)
+        end
+
+        return setmetatable(new_table, getmetatable(obj))
+    end
+
+    return _copy(object)
+end
 
 ---@type Note
 local parserNoteDefaults = {
@@ -97,12 +123,13 @@ local parserCaptureDefaults = {
 
     playerEvents = {},
     enemyEvents = {},
+    phaseChanges = {}
 }
 
 ---@type ns.parser
 ns.parser = {
-    note = parserNoteDefaults,
-    capture = parserCaptureDefaults
+    note = ns.util.DeepCopy(parserNoteDefaults),
+    capture = ns.util.DeepCopy(parserCaptureDefaults)
 }
 
 local ENABLED_ENCOUNTERS = {
@@ -117,6 +144,15 @@ local ENABLED_ENCOUNTERS = {
     [2920] = "Princess",
     [2921] = "Silken",
     [2922] = "Ansu",
+
+    [3009] = "Vexie",
+    [3010] = "Carnage",
+    [3011] = "Rik",
+    [3012] = "Stix",
+    [3013] = "Sprocket",
+    [3014] = "Bandit",
+    [3015] = "Mugzee",
+    [3016] = "Gallywix",
 }
 
 ns.EventFrame = CreateFrame("Frame")
@@ -188,11 +224,19 @@ function ns.EventFrame:ENCOUNTER_START(_, ...)
     ns.parser.capture.captureEvents = true
     ns.parser.capture.startTime = GetTime()
     ns.parser.capture.startDateTime = date("%Y-%m-%d %H:%M:%S")
+
+    if (BigWigsLoader) then
+        BigWigsLoader.RegisterMessage(ns, "BigWigs_SetStage", ns.bw.BigWigsSetStage)
+    end
 end
 
 function ns.EventFrame:ENCOUNTER_END(_, ...)
     if (not ns.parser.capture.captureEvents) then
         return
+    end
+
+    if (BigWigsLoader) then
+        BigWigsLoader.UnregisterMessage(ns, "BigWigs_SetStage")
     end
 
     local encounterID, encounterName, difficultyID, groupSize, success = ...
@@ -270,6 +314,11 @@ function ns.EventFrame:UNIT_FLAGS(_, unitId)
         return
     end
 
+    -- Don't revive angels, wait for their real death event
+    if (ns.parser.capture.deadPlayers[playerName].angel) then
+        return
+    end
+
     tinsert(ns.parser.capture.deathEvents, {
         player = playerName,
         time = GetTime(),
@@ -308,7 +357,11 @@ function ns.EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
     if (not hostileDestUnit and subEvent == "UNIT_DIED") then
         ns.util.VDTLog({ hostileDestUnit, subEvent, destName, destGUID }, "UNIT_DIED")
 
-        if (ns.parser.capture.deadPlayers[destName]
+        if ((ns.parser.capture.deadPlayers[destName]
+                    -- Angels should still flow through here and "die again" so
+                    -- they get picked up by the unit-flag event we use to
+                    -- identify resses
+                    and not ns.parser.capture.deadPlayers[destName].angel)
                 or not ns.parser.capture.playersInEncounter[destName]
                 or not ns.parser.note.meta.players[destName]) then
             return
@@ -319,7 +372,7 @@ function ns.EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
             return
         end
 
-        ns.parser.capture.deadPlayers[destName] = true
+        ns.parser.capture.deadPlayers[destName] = { dead = true }
         tinsert(ns.parser.capture.deathEvents, {
             player = destName,
             time = GetTime()
@@ -345,11 +398,26 @@ function ns.EventFrame:COMBAT_LOG_EVENT_UNFILTERED()
             return
         end
 
-        ns.parser.capture.deadPlayers[sourceName] = true
+        ns.parser.capture.deadPlayers[sourceName] = { dead = true, angel = true }
         tinsert(ns.parser.capture.deathEvents, {
             player = sourceName,
             time = GetTime()
         })
+    end
+
+    -- Archbishop Benedictus' Restitution (Spirit self-ress talent)
+    if (not hostileSourceUnit and subEvent == "SPELL_AURA_REMOVED" and spell == 211336) then
+        if (not ns.parser.capture.deadPlayers[sourceName]) then
+            return
+        end
+
+        tinsert(ns.parser.capture.deathEvents, {
+            player = sourceName,
+            time = GetTime(),
+            ress = true
+        })
+
+        ns.parser.capture.deadPlayers[sourceName] = nil
     end
 
     -- Record all friendly spells that weren't in the note, this is
@@ -660,28 +728,6 @@ function ns.util.VDTLog(payload, label)
     if (VDT and type(VDT) == "table") then
         VDT:Add(payload, string.format("%s — %s", addonName, label or "[Unnamed log entry]"))
     end
-end
-
-function ns.util.DeepCopy(object)
-    local lookup_table = {}
-    local function _copy(obj)
-        if type(obj) ~= "table" then
-            return obj
-        elseif lookup_table[obj] then
-            return lookup_table[obj]
-        end
-
-        local new_table = {}
-        lookup_table[obj] = new_table
-
-        for key, value in pairs(obj) do
-            new_table[_copy(key)] = _copy(value)
-        end
-
-        return setmetatable(new_table, getmetatable(obj))
-    end
-
-    return _copy(object)
 end
 
 function ns.util.TrimRealmName(name)
@@ -1065,6 +1111,19 @@ function ns.gui.SetDetails(frame, value)
 
     for _, label in ipairs(labels) do
         frame:AddChild(label)
+    end
+end
+
+--[[
+    NYI — Just scaffolding in case we ever have to implement the MRT
+    note format that uses the p1/pg1 syntax. In which case we have to
+    keep track of phase changes manually as they come in from BW.
+]]
+function ns.bw.BigWigsSetStage(event, bwModule, stage)
+    if (ns.parser.capture.phaseChanges[stage]) then
+        tinsert(ns.parser.capture.phaseChanges[stage], GetTime())
+    else
+        ns.parser.capture.phaseChanges[stage] = { GetTime() }
     end
 end
 

@@ -1,4 +1,4 @@
-## Interface: 110007
+## Interface: 111000
 ## Title: Sniffa
 ## Notes: Tracks assignments and reports missed casts
 ## SavedVariables: SniffaDB, SniffaLDBIconDB
