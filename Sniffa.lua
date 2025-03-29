@@ -1240,7 +1240,7 @@ function ns.parser.ParseNote()
                     (not IsInGroup())
                 )
 
-                if (captureEntry) then
+                if (captureEntry and spell) then
                     local playerSpell = ns.parser.MapIncorrectPlayerSpellsFromNote(spell)
                     local spellInfo = C_Spell.GetSpellInfo(playerSpell)
 
