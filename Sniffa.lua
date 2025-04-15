@@ -1158,6 +1158,9 @@ function ns.parser.MapIncorrectPlayerSpellsFromNote(spell)
         -- Hunter
         [281195] = 264735, -- SoTF
         [388035] = 272679, -- FotB
+
+        -- Monk
+        [399491] = 399510, -- Gift
     }
 
     if (map[spell]) then
@@ -1261,8 +1264,8 @@ function ns.parser.ParseNote()
 
                         playerEntry.offset = {
                             event = ns.parser.ExpandEventName(event),
-                            spell = offsetSpell,
-                            count = count
+                            spell = tonumber(offsetSpell),
+                            count = tonumber(count)
                         }
                     end
 
