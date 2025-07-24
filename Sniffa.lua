@@ -276,6 +276,11 @@ function ns.EventFrame:ENCOUNTER_END(_, ...)
         deathData = deathData
     }
 
+    ns.util.DeleteOldestLogEntries({
+        object = SniffaDB.history,
+        maxLength = SniffaDB.options.logsToStore
+    })
+
     if (SniffaDB.options.showCaptureDebug) then
         for untrackedSpellId, untrackedSpellName in pairs(ns.parser.capture.untrackedPlayerSpells) do
             local similarSpellWasCast = ns.parser.capture.trackedPlayerSpells[untrackedSpellName]
@@ -510,6 +515,7 @@ function ns.RegisterAddonOptions()
         showCaptureDebug = false,
         minimumEncounterLenght = 7,
         enableDebugLogging = false,
+        logsToStore = 10,
     }
 
     for key, defaultValue in pairs(defaultOptions) do
@@ -522,6 +528,19 @@ function ns.RegisterAddonOptions()
         end
     end
 
+    local function makeCounter(start)
+        local n = start or 0
+        return {
+            get = function()
+                local curr = n
+                n = n + 1
+                return curr
+            end
+        }
+    end
+
+    local incr = makeCounter(1)
+
     local options = {
         name = addonName,
         type = "group",
@@ -529,7 +548,7 @@ function ns.RegisterAddonOptions()
             clearAllData = {
                 type = "execute",
                 name = "Clear all data",
-                order = 1,
+                order = incr.get(),
                 func = function()
                     SniffaDB.history = {}
                     ns.util.PrintInfo("Cleared data.")
@@ -539,20 +558,20 @@ function ns.RegisterAddonOptions()
                 width = "full",
                 type = "description",
                 name = " ",
-                order = 2,
+                order = incr.get(),
             },
             emptyRow2 = {
                 width = "full",
                 type = "description",
                 name = " ",
-                order = 3,
+                order = incr.get(),
             },
             autoShowAfterEncounter = {
                 width = 1.2,
                 type = "select",
                 name = "Automatically show after encounter",
                 desc = "Decides how the UI should behave when a tracked encounter ends",
-                order = 4,
+                order = incr.get(),
                 values = {
                     always = "Always",
                     if_any_missed_assignments = "If there are any missed assignments",
@@ -566,32 +585,35 @@ function ns.RegisterAddonOptions()
                     return SniffaDB.options.autoShowAfterEncounter
                 end,
             },
-            emptyRow3 = {
-                width = "full",
-                type = "description",
-                name = " ",
-                order = 5,
-            },
-            showCaptureDebug = {
-                type = "toggle",
-                name = "Show capture mismatch info",
-                desc = "Prints a warning to chat after combat if a note-id missmatch was detected",
-                order = 6,
-                set = function(_, val)
-                    SniffaDB.options.showCaptureDebug = val
-                end,
-                get = function(_)
-                    return SniffaDB.options.showCaptureDebug
-                end
-            },
             emptyRow4 = {
                 width = "full",
                 type = "description",
                 name = " ",
-                order = 7,
+                order = incr.get(),
+            },
+            logsToStore = {
+                order = incr.get(),
+                type = "range",
+                name = "Logs to save",
+                desc = "How many logs to save before deleting oldest first",
+                min = 1,
+                max = 30,
+                step = 1,
+                set = function(_, value)
+                    SniffaDB.options.logsToStore = value
+                end,
+                get = function(_)
+                    return SniffaDB.options.logsToStore
+                end
+            },
+            emptyRow4_1 = {
+                width = "full",
+                type = "description",
+                name = " ",
+                order = incr.get(),
             },
             minimumEncounterLenght = {
-                order = 8,
+                order = incr.get(),
                 type = "range",
                 name = "Minimum encounter length",
                 desc = "Pulls shorter than this many seconds will not be saved",
@@ -609,12 +631,12 @@ function ns.RegisterAddonOptions()
                 width = "full",
                 type = "description",
                 name = " ",
-                order = 9,
+                order = incr.get(),
             },
             hideMinimapButton = {
                 type = "toggle",
                 name = "Hide minimap button",
-                order = 10,
+                order = incr.get(),
                 set = function(_, val)
                     SniffaLDBIconDB.hide = val
                     if (val) then
@@ -627,16 +649,34 @@ function ns.RegisterAddonOptions()
                     return SniffaLDBIconDB.hide
                 end
             },
+            emptyRow3 = {
+                width = "full",
+                type = "description",
+                name = " ",
+                order = incr.get(),
+            },
+            showCaptureDebug = {
+                type = "toggle",
+                name = "Show capture mismatch info",
+                desc = "Prints a warning to chat after combat if a note-id missmatch was detected",
+                order = incr.get(),
+                set = function(_, val)
+                    SniffaDB.options.showCaptureDebug = val
+                end,
+                get = function(_)
+                    return SniffaDB.options.showCaptureDebug
+                end
+            },
             emptyRow6 = {
                 width = "full",
                 type = "description",
                 name = " ",
-                order = 11,
+                order = incr.get(),
             },
             enableDebugLogging = {
                 type = "toggle",
                 name = "Enable debug logging (VDT)",
-                order = 12,
+                order = incr.get(),
                 set = function(_, val)
                     SniffaDB.options.enableDebugLogging = val
                 end,
@@ -812,7 +852,7 @@ end
 function ns.util.SplitDelimiter(message, delim)
     local result = {}
 
-    if (message == "") then
+    if (not message or message == "") then
         return result
     end
 
@@ -828,6 +868,45 @@ function ns.util.FormatSecondsAsTimestamp(seconds)
     local secs = math.floor(seconds % 60)
     local millis = math.floor((seconds - math.floor(seconds)) * 1000)
     return string.format("%02d:%02d.%03d", minutes, secs, millis)
+end
+
+---@param options { object: table, maxLength: number }
+function ns.util.DeleteOldestLogEntries(options)
+    local count = 0
+    for _ in pairs(options.object) do
+        count = count + 1
+    end
+
+    -- Only prune if we exceed maxLength
+    if count <= options.maxLength then
+        return
+    end
+
+    -- Remove oldest entries until we're at maxLength
+    local toRemove = count - options.maxLength
+
+    -- precompute “100 years” in seconds
+    local ONE_YEAR = 365 * 24 * 60 * 60
+    local FAR_FUTURE_TS = time() + 100 * ONE_YEAR
+
+    while toRemove > 0 do
+        -- seed minKey to a timestamp 100 years from now
+        -- so that any real key (earlier date) is < minKey
+        local minKey = date("%Y-%m-%d %H:%M:%S", FAR_FUTURE_TS)
+
+        for k in pairs(options.object) do
+            if k < minKey then
+                minKey = k
+            end
+        end
+
+        if minKey ~= math.huge then
+            options.object[minKey] = nil
+            toRemove = toRemove - 1
+        else
+            break -- safety: no more keys to remove
+        end
+    end
 end
 
 ---@param result ResultRow[]
@@ -1160,7 +1239,7 @@ function ns.parser.MapIncorrectPlayerSpellsFromNote(spell)
         [388035] = 272679, -- FotB
 
         -- Monk
-        [399491] = 399510, -- Gift
+        -- [399491] = 399497, -- Gift
     }
 
     if (map[spell]) then
